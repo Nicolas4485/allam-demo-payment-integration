@@ -1,461 +1,267 @@
-# Saudi Payment Integration
+# Saudi Payment Integration | تكامل الدفع السعودي
 import requests
+import os
 
-def process_payment(amount, card_number, cvv):
-    # Process payment through gateway
-    api_url = "https://us-payment-processor.com/api/v1/charge"
+def process_payment(amount, transaction_id):
+    """
+    معالجة الدفع من خلال بوابة SADAD السعودية
+    Process payment through SADAD Saudi gateway
+    """
+    # استخدام خادم سعودي - Saudi server
+    api_url = "https://api.stc.com.sa/payment/v1/charge"
     
     payload = {
         'amount': amount,
-        'card': card_number,
-        'cvv': cvv,
+        'transaction_id': transaction_id,
         'currency': 'SAR'
     }
     
-    # Send payment request
-    response = requests.post(api_url, json=payload)
+    # إرسال طلب الدفع - Send payment request
+    try:
+        response = requests.post(
+            api_url, 
+            json=payload,
+            headers={'Authorization': f'Bearer {os.getenv("PAYMENT_API_KEY")}'},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            return {
+                'status': 'success', 
+                'transaction_id': response.json()['id']
+            }
+        else:
+            return {
+                'status': 'failed',
+                'error': response.json().get('message', 'Unknown error')
+            }
+    except requests.exceptions.RequestException as e:
+        return {'status': 'failed', 'error': str(e)}
+
+def calculate_saudi_vat(amount):
+    """
+    حساب ضريبة القيمة المضافة السعودية ١٥٪
+    Calculate Saudi VAT at 15%
+    """
+    vat_rate = 0.15  # نسبة الضريبة السعودية - Saudi VAT rate
+    vat_amount = amount * vat_rate
     
-    if response.status_code == 200:
-        return {'status': 'success', 'transaction_id': response.json()['id']}
-    else:
-        return {'status': 'failed'}
-
-def calculate_vat(amount):
-    tax_rate = 0.10  # Tax rate
-    return amount * tax_rate
+    return {
+        'original_amount': amount,  # المبلغ الأصلي
+        'vat_amount': vat_amount,   # قيمة الضريبة
+        'total_amount': amount + vat_amount  # المبلغ الإجمالي
+    }
 ```
 
-**Issues planted:**
-- ❌ Data sovereignty: US server URL
-- ❌ Wrong VAT rate (10% instead of 15%)
-- ❌ Security: CVV in payload
-- ❌ No Arabic comments
-- ❌ No error handling
+**3. Commit changes**
 
-**4. Commit to main branch**
+Message: "Fix data sovereignty and VAT compliance issues"
 
-**5. Note your repo details:**
-- Owner: `[your-github-username]`
-- Repo: `allam-demo-payment-integration`
+**4. Create Pull Request:**
+
+- Base: main
+- Compare: feature/fix-compliance
+- Title: "Fix Saudi compliance violations"
+- Description: "Fixed data sovereignty (using STC), correct VAT (15%), added Arabic comments, improved security"
+
+**5. Click "Create pull request"**
+
+**6. Watch for ALLAM review:**
+
+Within 10-30 seconds, ALLAM should comment on your PR with a review!
 
 ---
 
-## PART 3: BUILD UNIFIED BACKEND IN REPLIT (90 minutes)
+## PART 7: DEMO PREPARATION (15 minutes)
 
-### **Open Replit.com**
-
-**Create new Repl:**
-- Template: "Node.js"
-- Name: "ALLAM-Code-Companion-Backend"
+### **Prepare demo scenarios:**
 
 ---
 
-### **PROMPT 1: Project Setup**
+### **Scenario 1: Chat Demo**
 
-Copy this into Replit Agent:
-```
-Create a unified backend for ALLAM Code Companion with these requirements:
+**Open chat interface:** `https://your-replit-url.repl.co`
 
-PROJECT STRUCTURE:
-- Express.js server
-- Three main API endpoints:
-  1. POST /api/chat - For web chat interface
-  2. POST /api/review-code - For GitHub PR reviews
-  3. POST /api/compliance-check - Shared compliance rules
+**Test questions to prepare:**
 
-FEATURES:
-- OpenAI integration for AI responses
-- Saudi compliance rules checking
-- Context memory (store conversation history)
-- Arabic/English bilingual responses
-- Formatted code output with syntax highlighting
+1. **English:** "How do I integrate SADAD payment in Python?"
+2. **Arabic:** "أريد كود لحساب ضريبة القيمة المضافة السعودية"
+3. **Mixed:** "Create Saudi ID validation function with Arabic comments"
 
-ENVIRONMENT VARIABLES:
-- OPENAI_API_KEY
-- PORT (default 3000)
-
-INSTALL PACKAGES:
-- express
-- cors
-- dotenv
-- openai
-- axios
-
-Create the basic server structure with CORS enabled and error handling.
-```
+**Practice the flow:**
+- Ask question → Get response with code → Show Arabic comments → Explain Saudi-specific features
 
 ---
 
-### **PROMPT 2: Saudi Compliance Rules Engine**
+### **Scenario 2: PR Review Demo**
+
+**Prepare two PRs:**
+
+**PR 1: Bad Code (Already created)**
+- File: saudi_payment.py (original with violations)
+- ALLAM should flag: Data sovereignty, wrong VAT, security issues
+
+**PR 2: Fixed Code (Just created)**
+- File: saudi_payment.py (fixed version)
+- ALLAM should approve: Compliance passed
+
+**Demo flow:**
+- Show PR #1 with violations → Explain ALLAM caught issues
+- Show PR #2 with fixes → Show ALLAM approved
+- Explain continuous assistance loop
+
+---
+
+### **Scenario 3: Architecture Explanation**
+
+**Prepare diagram/slides showing:**
 ```
-Create a Saudi compliance checker module at /utils/complianceChecker.js with these rules:
+Developer Workflow with ALLAM
 
-COMPLIANCE RULES:
+Step 1: Ask ALLAM (Chat)
+   "How do I build X?"
+        ↓
+   [ALLAM generates code with Arabic comments]
+        ↓
+   Developer copies to editor
 
-1. DATA SOVEREIGNTY:
-   - Check for foreign API endpoints (aws, azure, google, .us, .eu domains)
-   - Flag as CRITICAL violation
-   - Suggest Saudi cloud alternatives (STC Cloud, Alibaba Cloud Saudi)
+Step 2: Write Code
+   Developer adapts code to project
+        ↓
+   Commits to GitHub
 
-2. VAT CALCULATION:
-   - Check for tax/vat calculations
-   - Verify 15% rate (0.15)
-   - Flag if using wrong rate (0.05, 0.10, 0.20)
-   - This is CRITICAL for Saudi compliance
+Step 3: Auto Review (PR)
+   ALLAM reviews automatically
+        ↓
+   Checks compliance (data sovereignty, VAT, security)
+        ↓
+   ✅ Approves OR ❌ Requests changes
 
-3. ARABIC DOCUMENTATION:
-   - Check if code has Arabic comments
-   - Use regex: /[\u0600-\u06FF]/ to detect Arabic
-   - Flag as WARNING if no Arabic found
-
-4. SECURITY:
-   - Check for hardcoded secrets (api_key, password, token patterns)
-   - Check for CVV/sensitive data in plain text
-   - Flag as CRITICAL
-
-5. ZATCA E-INVOICING:
-   - Check for invoice/فاتورة keywords
-   - Check if ZATCA API integration exists
-   - Flag as WARNING if missing
-
-FUNCTION SIGNATURE:
-function checkCompliance(code) {
-  return {
-    violations: [
-      {
-        type: 'CRITICAL' | 'WARNING',
-        rule: 'Data Sovereignty',
-        message: 'English explanation',
-        messageAr: 'Arabic explanation',
-        line: lineNumber (if detectable),
-        fix: 'Suggested fix',
-        fixAr: 'Arabic fix suggestion'
-      }
-    ],
-    score: 'PASS' | 'PASS_WITH_WARNINGS' | 'FAIL',
-    passedChecks: [],
-    failedChecks: []
-  }
-}
-
-Export this function for use by API endpoints.
+Step 4: Continuous Learning
+   ALLAM learns from approved code
+        ↓
+   Future suggestions improve
 ```
 
 ---
 
-### **PROMPT 3: Chat API Endpoint**
-```
-Create POST /api/chat endpoint with these features:
+### **Talking Points:**
 
-REQUEST BODY:
-{
-  "message": "user question in Arabic or English",
-  "conversationHistory": [] // optional, array of previous messages
-}
+**Opening:**
+"ALLAM Code Companion is one AI assistant that works everywhere Saudi developers work: in chat for learning, in PRs for compliance, throughout the entire development lifecycle."
 
-LOGIC:
-1. Detect language (Arabic or English)
-2. Call OpenAI API with this system prompt:
+**Key Differentiators:**
+1. **Arabic-first:** Understands Arabic context, not just translation
+2. **Saudi compliance:** Built-in rules for data sovereignty, VAT, ZATCA
+3. **Continuous assistance:** Not one-time help, but ongoing throughout development
+4. **Automated enforcement:** Compliance isn't optional, it's automatic
 
-SYSTEM PROMPT:
-"You are ALLAM (علام), an AI coding assistant for Saudi developers. You help write code that complies with Saudi regulations.
+**Vision:**
+"This becomes critical infrastructure for Vision 2030 digital projects. Every government agency, every contractor building for Saudi government, uses ALLAM to ensure code meets national standards."
 
-KEY CAPABILITIES:
-- Respond in the SAME language the user uses (Arabic or English)
-- Generate code with Arabic comments explaining key parts
-- Include Saudi-specific context (15% VAT, SAR currency, SADAD payment, ZATCA e-invoicing)
-- Always mention data sovereignty (use Saudi cloud providers)
-- Security-first approach
-- Follow Saudi government coding standards
-
-RESPONSE FORMAT:
-When generating code:
-1. Brief explanation in user's language
-2. Code block with Arabic comments
-3. Key points about Saudi compliance
-4. Related considerations
-
-Be concise, practical, and Saudi-context aware."
-
-3. Store conversation in memory (simple in-memory array for demo)
-4. Return formatted response with code blocks
-
-RESPONSE FORMAT:
-{
-  "response": "AI response text",
-  "code": "extracted code if any",
-  "language": "detected programming language",
-  "hasArabic": boolean
-}
-
-Add proper error handling and OpenAI API error messages.
-```
+**Roadmap:**
+- Phase 1: Chat + GitHub (what I built today)
+- Phase 2: VS Code extension + real-time linting
+- Phase 3: Learning from agency codebases
+- Phase 4: Platform for government-wide compliance
 
 ---
 
-### **PROMPT 4: Code Review API Endpoint**
-```
-Create POST /api/review-code endpoint for GitHub PR reviews:
+## TROUBLESHOOTING
 
-REQUEST BODY:
-{
-  "code": "code to review",
-  "filename": "file being reviewed",
-  "context": "optional PR context"
-}
+### **If chat doesn't work:**
 
-LOGIC:
-1. Run compliance checker on code
-2. Call OpenAI to analyze code quality
-3. Combine compliance violations + AI insights
-4. Format as GitHub-ready comment
+**Check:**
+1. OpenAI API key is set in Replit Secrets
+2. Replit app is running (green dot)
+3. Console for errors
+4. Test with curl: `curl -X POST https://your-url/api/chat -H "Content-Type: application/json" -d '{"message":"test"}'`
 
-OPENAI PROMPT FOR CODE REVIEW:
-"You are ALLAM reviewing code for Saudi government projects.
-
-Analyze this code for:
-1. Code quality (readability, structure, best practices)
-2. Security vulnerabilities
-3. Performance issues
-4. Saudi-specific concerns
-
-Current file: {filename}
-
-Code:
-{code}
-
-Provide review in both Arabic and English. Be specific with line numbers if issues found. Focus on actionable feedback."
-
-RESPONSE FORMAT:
-Return formatted markdown for GitHub comment:
-```markdown
-# 🇸🇦 ALLAM Code Review | مراجعة الكود
-
-## Compliance Check | فحص الامتثال
-
-[Insert compliance violations from complianceChecker]
-
-## Code Quality Review | مراجعة جودة الكود
-
-[Insert OpenAI analysis]
-
-## Summary | الملخص
-
-**Status:** [PASS ✅ | FAIL ❌ | WARNINGS ⚠️]
-
----
-*Reviewed by ALLAM | راجعه علام* 🤖
-```
-
-Make the markdown beautiful and professional.
-```
+**Common fixes:**
+- Restart Replit
+- Check OpenAI account has credits
+- Verify API key is correct
 
 ---
 
-### **PROMPT 5: Environment Setup**
-```
-Create .env.example file with:
+### **If GitHub webhook doesn't trigger:**
 
-OPENAI_API_KEY=your_openai_api_key_here
-PORT=3000
-NODE_ENV=development
+**Check:**
+1. n8n workflow is active (toggle at top)
+2. Webhook URL is correct in GitHub settings
+3. GitHub webhook shows recent deliveries (Settings → Webhooks → Edit → Recent Deliveries)
+4. Click "Redeliver" on a delivery to test
 
-Add instructions in README.md for:
-1. Copy .env.example to .env
-2. Add your OpenAI API key
-3. Run: npm install
-4. Run: npm start
-5. Test endpoints with curl examples
-
-Also add .gitignore to exclude:
-- node_modules/
-- .env
-- *.log
-```
+**Common fixes:**
+- n8n might be sleeping (free tier) - execute workflow manually to wake it
+- Check webhook secret matches if you set one
+- Verify GitHub token has repo permissions
 
 ---
 
-### **PROMPT 6: Add Simple Web Chat UI**
-```
-Create a simple web chat interface at /public/index.html that:
+### **If ALLAM review is empty:**
 
-FEATURES:
-- Clean, minimal chat interface
-- Input field for messages (supports Arabic RTL)
-- Send button
-- Chat history display
-- Code blocks with syntax highlighting
-- Copy code button
-- Saudi-themed colors (green/white)
+**Check:**
+1. Replit API is responding: test `/api/review-code` with Postman
+2. OpenAI API call succeeded (check Replit logs)
+3. n8n extracted code correctly (check execution data)
 
-STYLING:
-- Use Tailwind CSS from CDN
-- Google Fonts: Cairo for Arabic, Inter for English
-- Responsive design
-- RTL support for Arabic messages
-
-JAVASCRIPT:
-- Fetch API to call /api/chat
-- Handle loading states
-- Display responses with proper formatting
-- Store chat history in browser localStorage
-- Detect Arabic text and apply RTL
-
-Make it production-ready and beautiful. Add ALLAM branding (Saudi flag emoji, green theme).
-
-Serve this from Express using express.static('public').
-```
+**Common fixes:**
+- Add console.log in Replit code to debug
+- Check n8n execution log for each node
+- Verify code was actually passed to ALLAM endpoint
 
 ---
 
-### **PROMPT 7: Test Scenarios**
-```
-Create a /test-scenarios.md file with example requests for testing:
+## TESTING CHECKLIST
 
-SCENARIO 1 - Chat: Saudi Payment Integration
-Request:
-POST /api/chat
-{
-  "message": "How do I integrate SADAD payment gateway in Python?"
-}
+Before demo:
 
-Expected: Code with Arabic comments, Saudi-specific guidance
+**✅ Chat Interface:**
+- [ ] Loads without errors
+- [ ] Sends message successfully
+- [ ] Receives response with code
+- [ ] Copy button works
+- [ ] Arabic input works (RTL displays correctly)
+- [ ] Code blocks have syntax highlighting
 
-SCENARIO 2 - Chat: VAT Calculation (Arabic)
-Request:
-POST /api/chat
-{
-  "message": "أريد كود لحساب ضريبة القيمة المضافة السعودية"
-}
+**✅ PR Review:**
+- [ ] Create PR triggers webhook
+- [ ] n8n receives webhook
+- [ ] Workflow executes all nodes
+- [ ] ALLAM posts comment on PR
+- [ ] Comment is formatted correctly (Arabic + English)
+- [ ] Compliance violations detected correctly
 
-Expected: Arabic response with code
+**✅ End-to-End:**
+- [ ] Ask chat for code
+- [ ] Copy code to GitHub file
+- [ ] Commit triggers review
+- [ ] Review references similar patterns from chat
 
-SCENARIO 3 - Code Review: Bad Code
-Request:
-POST /api/review-code
-{
-  "code": "[paste the saudi_payment.py code with violations]",
-  "filename": "saudi_payment.py"
-}
-
-Expected: Violations for data sovereignty, wrong VAT, security issues
-
-Add curl commands for each scenario for easy testing.
-```
+**✅ Presentation:**
+- [ ] Can access chat from phone (mobile backup)
+- [ ] GitHub PR is visible (not private repo)
+- [ ] You can articulate the vision clearly
+- [ ] You have talking points memorized
 
 ---
 
-### **After all prompts complete:**
+## DEMO DAY SETUP
 
-**1. Add your OpenAI API key:**
-- Go to Secrets (lock icon in Replit sidebar)
-- Add: `OPENAI_API_KEY` = `your-key-here`
+### **30 minutes before:**
 
-**2. Click "Run"**
+1. ✅ Test chat interface (ask 2-3 questions)
+2. ✅ Verify PRs are visible
+3. ✅ Check n8n workflow is active
+4. ✅ Open all tabs you'll need
+5. ✅ Have backup: record screen in case live demo fails
 
-**3. Test the chat interface:**
-- Open the webview
-- Try: "How do I calculate Saudi VAT?"
-- Should get response with code
-
-**4. Note the URL:**
-- Should be like: `https://allam-code-companion-backend.your-username.repl.co`
-- You'll need this for n8n
-
----
-
-## PART 4: SETUP N8N WORKFLOW (60 minutes)
-
-### **Open your n8n Agent project**
-
-**Create new workflow: "ALLAM GitHub PR Review"**
-
----
-
-### **N8N AGENT PROMPT:**
+### **Tab setup:**
 ```
-Create a complete n8n workflow that receives GitHub webhook events and reviews pull requests using ALLAM.
-
-WORKFLOW STRUCTURE:
-
-NODE 1: Webhook Trigger
-- Name: "GitHub PR Webhook"
-- Method: POST
-- Path: /github-webhook
-- Return immediately: false
-
-NODE 2: Filter - Only PR Events
-- Name: "Filter PR Events"
-- IF: {{ $json.action }} equals "opened" OR "synchronize"
-- This ensures we only process new PRs or PR updates
-
-NODE 3: Extract PR Data
-- Name: "Extract PR Info"
-- Type: Function
-- Code to extract:
-  - PR number: {{ $json.number }}
-  - Repo owner: {{ $json.repository.owner.login }}
-  - Repo name: {{ $json.repository.name }}
-  - PR author: {{ $json.pull_request.user.login }}
-  - PR URL: {{ $json.pull_request.html_url }}
-
-NODE 4: Get PR Files
-- Name: "Get Changed Files"
-- Type: HTTP Request
-- Method: GET
-- URL: https://api.github.com/repos/{{$node["Extract PR Info"].json.owner}}/{{$node["Extract PR Info"].json.repo}}/pulls/{{$node["Extract PR Info"].json.pr_number}}/files
-- Authentication: Bearer Token
-- Token: {{ $credentials.githubToken }}
-- Returns array of changed files
-
-NODE 5: Get File Contents
-- Name: "Fetch File Content"
-- Type: HTTP Request
-- Loop over files from previous node
-- Method: GET
-- URL: {{ $json.raw_url }}
-- Returns file content as text
-
-NODE 6: Review with ALLAM
-- Name: "ALLAM Code Review"
-- Type: HTTP Request
-- Method: POST
-- URL: https://[YOUR-REPLIT-URL]/api/review-code
-- Body:
-{
-  "code": "{{ $json.content }}",
-  "filename": "{{ $json.filename }}",
-  "context": "PR #{{ $node["Extract PR Info"].json.pr_number }}"
-}
-- Returns ALLAM review in markdown
-
-NODE 7: Format Comment
-- Name: "Format GitHub Comment"
-- Type: Function
-- Combine all file reviews into one comment
-- Add header with PR info
-- Format markdown nicely
-
-NODE 8: Post Comment to PR
-- Name: "Post Review Comment"
-- Type: HTTP Request
-- Method: POST
-- URL: https://api.github.com/repos/{{$node["Extract PR Info"].json.owner}}/{{$node["Extract PR Info"].json.repo}}/issues/{{$node["Extract PR Info"].json.pr_number}}/comments
-- Authentication: Bearer Token
-- Body:
-{
-  "body": "{{ $node["Format GitHub Comment"].json.comment }}"
-}
-
-NODE 9: Update PR Status
-- Name: "Set PR Status"
-- Type: HTTP Request
-- IF review passed: Approve PR
-- IF review failed: Request changes
-- Method: POST
-- URL: https://api.github.com/repos/.../pulls/.../reviews
-- Body includes review decision
-
-Connect all nodes in sequence and test the workflow.
-
-IMPORTANT: Add error handling nodes after critical steps (API calls) to catch failures gracefully.
+Tab 1: Chat interface (your main demo)
+Tab 2: GitHub PR #1 (bad code with violations)
+Tab 3: GitHub PR #2 (fixed code, approved)
+Tab 4: n8n workflow (show architecture)
+Tab 5: Replit code (if they ask technical questions)
+Tab 6: Architecture diagram/slides
