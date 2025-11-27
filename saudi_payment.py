@@ -1,267 +1,177 @@
-# Saudi Payment Integration | تكامل الدفع السعودي
-import requests
-import os
+// ملف: saudiPayment.js
+// المتطلبات: npm i axios luxon
 
-def process_payment(amount, transaction_id):
-    """
-    معالجة الدفع من خلال بوابة SADAD السعودية
-    Process payment through SADAD Saudi gateway
-    """
-    # استخدام خادم سعودي - Saudi server
-    api_url = "https://api.stc.com.sa/payment/v1/charge"
-    
-    payload = {
-        'amount': amount,
-        'transaction_id': transaction_id,
-        'currency': 'SAR'
-    }
-    
-    # إرسال طلب الدفع - Send payment request
-    try:
-        response = requests.post(
-            api_url, 
-            json=payload,
-            headers={'Authorization': f'Bearer {os.getenv("PAYMENT_API_KEY")}'},
-            timeout=10
-        )
-        
-        if response.status_code == 200:
-            return {
-                'status': 'success', 
-                'transaction_id': response.json()['id']
-            }
-        else:
-            return {
-                'status': 'failed',
-                'error': response.json().get('message', 'Unknown error')
-            }
-    except requests.exceptions.RequestException as e:
-        return {'status': 'failed', 'error': str(e)}
+import axios from 'axios';
+import { DateTime } from 'luxon';
 
-def calculate_saudi_vat(amount):
-    """
-    حساب ضريبة القيمة المضافة السعودية ١٥٪
-    Calculate Saudi VAT at 15%
-    """
-    vat_rate = 0.15  # نسبة الضريبة السعودية - Saudi VAT rate
-    vat_amount = amount * vat_rate
-    
-    return {
-        'original_amount': amount,  # المبلغ الأصلي
-        'vat_amount': vat_amount,   # قيمة الضريبة
-        'total_amount': amount + vat_amount  # المبلغ الإجمالي
-    }
-```
+// ثابت: نسبة ضريبة القيمة المضافة في السعودية 15%
+const SAUDI_VAT_RATE = 0.15;
+// ثابت: المنطقة الزمنية للرياض
+const RIYADH_TZ = 'Asia/Riyadh';
 
-**3. Commit changes**
+// دالة مساعدة: تحويل مبلغ بالريال السعودي إلى هللات (integer)
+function toHalalas(amountSar) {
+  // نستخدم التقريب لضمان خلو النتيجة من الكسور
+  return Math.round(amountSar * 100);
+}
 
-Message: "Fix data sovereignty and VAT compliance issues"
+// دالة مساعدة: حساب ضريبة القيمة المضافة والمجموع مع الضريبة
+function calculateSaudiVAT(subtotalSar) {
+  // حساب الضريبة بدقة إلى منزلتين
+  const vat = +(subtotalSar * SAUDI_VAT_RATE).toFixed(2); // ضريبة 15%
+  const total = +(subtotalSar + vat).toFixed(2);          // الإجمالي مع الضريبة
+  return { vat, total };
+}
 
-**4. Create Pull Request:**
+// دوال مساعدة: توليد TLV لرمز QR الخاص بهيئة الزكاة والضريبة (ZATCA)
+function tlvEncode(tag, value) {
+  // ترميز TLV: [Tag][Length][Value] باستخدام UTF-8
+  const valueBytes = Buffer.from(String(value), 'utf8');
+  return Buffer.concat([
+    Buffer.from([tag]),
+    Buffer.from([valueBytes.length]),
+    valueBytes
+  ]);
+}
 
-- Base: main
-- Compare: feature/fix-compliance
-- Title: "Fix Saudi compliance violations"
-- Description: "Fixed data sovereignty (using STC), correct VAT (15%), added Arabic comments, improved security"
+// توليد رمز QR (Base64) وفق متطلبات ZATCA
+function generateZatcaQr({ sellerName, vatNumber, timestampRiyadhISO, totalWithVAT, vatAmount }) {
+  const tlvBuffer = Buffer.concat([
+    tlvEncode(1, sellerName),                    // اسم المورد
+    tlvEncode(2, vatNumber),                     // رقم ضريبة القيمة المضافة
+    tlvEncode(3, timestampRiyadhISO),            // التاريخ/الوقت بتوقيت الرياض ISO8601
+    tlvEncode(4, totalWithVAT.toFixed(2)),       // إجمالي الفاتورة مع الضريبة
+    tlvEncode(5, vatAmount.toFixed(2))           // قيمة الضريبة
+  ]);
+  return tlvBuffer.toString('base64');
+}
 
-**5. Click "Create pull request"**
+/**
+ * الدالة الرئيسية: تنفيذ دفعة سعودية عبر Moyasar أو Tap
+ * - المدخلات:
+ *   gateway: 'moyasar' | 'tap'  // بوابة الدفع
+ *   amountSAR: number           // المبلغ قبل الضريبة (بالريال)
+ *   description: string         // وصف العملية
+ *   paymentSource: string       // رمز دفع Token من الواجهة الأمامية (token/source id)
+ *   metadata?: object           // بيانات إضافية
+ *   customer?: object           // بيانات العميل (تُستخدم في Tap)
+ *   seller?: { name: string, vatNumber: string } // معلومات البائع للفوترة الإلكترونية
+ */
+export async function processSaudiPayment({
+  gateway,
+  amountSAR,
+  description,
+  paymentSource,
+  metadata = {},
+  customer = {},
+  seller = { name: 'متجر سعودي', vatNumber: '300123456700003' }
+}) {
+  // التحقق من البوابة
+  if (!['moyasar', 'tap'].includes(gateway)) {
+    throw new Error('بوابة غير مدعومة. استخدم "moyasar" أو "tap".');
+  }
 
-**6. Watch for ALLAM review:**
+  // تثبيت العملة على الريال السعودي
+  const currency = 'SAR';
 
-Within 10-30 seconds, ALLAM should comment on your PR with a review!
+  // حساب الضريبة والإجمالي
+  const { vat, total } = calculateSaudiVAT(amountSAR);
+  const amountHalalas = toHalalas(total); // بعض بوابات الدفع تتطلب هللات
 
----
+  // توليد الطابع الزمني بتوقيت الرياض
+  const timestampRiyadhISO = DateTime.now().setZone(RIYADH_TZ).toISO();
 
-## PART 7: DEMO PREPARATION (15 minutes)
+  let paymentResult;
 
-### **Prepare demo scenarios:**
+  if (gateway === 'moyasar') {
+    // تحقق من وجود مفتاح Moyasar
+    const secret = process.env.MOYASAR_SECRET_KEY;
+    if (!secret) throw new Error('MOYASAR_SECRET_KEY مفقود من متغيرات البيئة');
 
----
+    // ملاحظة أمنية: paymentSource هو token من الواجهة الأمامية (لا ترسل بيانات بطاقات خام إلى الخادم)
+    const payload = {
+      amount: amountHalalas,     // هللات
+      currency,                  // 'SAR'
+      description,
+      source: { type: 'token', token: paymentSource }, // توكن من Moyasar JS/SDK
+      metadata: { ...metadata, vatAmount: vat, subtotal: amountSAR }
+    };
 
-### **Scenario 1: Chat Demo**
+    const res = await axios.post('https://api.moyasar.com/v1/payments', payload, {
+      auth: { username: secret, password: '' }
+    });
+    paymentResult = res.data;
 
-**Open chat interface:** `https://your-replit-url.repl.co`
+  } else if (gateway === 'tap') {
+    // تحقق من وجود مفتاح Tap
+    const secret = process.env.TAP_SECRET_KEY;
+    if (!secret) throw new Error('TAP_SECRET_KEY مفقود من متغيرات البيئة');
 
-**Test questions to prepare:**
+    // Tap يستخدم amount بالريال (أي 2 decimal places)
+    const payload = {
+      amount: +total.toFixed(2), // إجمالي مع الضريبة
+      currency,                  // 'SAR'
+      threeDSecure: true,
+      description,
+      customer,                  // { first_name, email, phone, ... }
+      source: { id: paymentSource }, // token/source id من Tap JS/SDK
+      metadata: { ...metadata, vatAmount: vat, subtotal: amountSAR },
+      receipt: { email: true, sms: true } // إرسال إيصال للعميل
+    };
 
-1. **English:** "How do I integrate SADAD payment in Python?"
-2. **Arabic:** "أريد كود لحساب ضريبة القيمة المضافة السعودية"
-3. **Mixed:** "Create Saudi ID validation function with Arabic comments"
+    const res = await axios.post('https://api.tap.company/v2/charges', payload, {
+      headers: { Authorization: `Bearer ${secret}`, 'Content-Type': 'application/json' }
+    });
+    paymentResult = res.data;
+  }
 
-**Practice the flow:**
-- Ask question → Get response with code → Show Arabic comments → Explain Saudi-specific features
+  // توليد رمز QR متوافق مع ZATCA للفواتير الإلكترونية
+  const qrBase64 = generateZatcaQr({
+    sellerName: seller.name,
+    vatNumber: seller.vatNumber,
+    timestampRiyadhISO,
+    totalWithVAT: total,
+    vatAmount: vat
+  });
 
----
+  // نعيد نتيجة منظمة تحتوي على بيانات الدفع والضريبة والـ QR
+  return {
+    success: true,
+    gateway,
+    currency,
+    subtotalSAR: amountSAR,
+    vatSAR: vat,
+    totalSAR: total,
+    amountHalalas,
+    timestampRiyadhISO,
+    zatcaQRBase64: qrBase64,
+    raw: paymentResult
+  };
+}
 
-### **Scenario 2: PR Review Demo**
-
-**Prepare two PRs:**
-
-**PR 1: Bad Code (Already created)**
-- File: saudi_payment.py (original with violations)
-- ALLAM should flag: Data sovereignty, wrong VAT, security issues
-
-**PR 2: Fixed Code (Just created)**
-- File: saudi_payment.py (fixed version)
-- ALLAM should approve: Compliance passed
-
-**Demo flow:**
-- Show PR #1 with violations → Explain ALLAM caught issues
-- Show PR #2 with fixes → Show ALLAM approved
-- Explain continuous assistance loop
-
----
-
-### **Scenario 3: Architecture Explanation**
-
-**Prepare diagram/slides showing:**
-```
-Developer Workflow with ALLAM
-
-Step 1: Ask ALLAM (Chat)
-   "How do I build X?"
-        ↓
-   [ALLAM generates code with Arabic comments]
-        ↓
-   Developer copies to editor
-
-Step 2: Write Code
-   Developer adapts code to project
-        ↓
-   Commits to GitHub
-
-Step 3: Auto Review (PR)
-   ALLAM reviews automatically
-        ↓
-   Checks compliance (data sovereignty, VAT, security)
-        ↓
-   ✅ Approves OR ❌ Requests changes
-
-Step 4: Continuous Learning
-   ALLAM learns from approved code
-        ↓
-   Future suggestions improve
-```
-
----
-
-### **Talking Points:**
-
-**Opening:**
-"ALLAM Code Companion is one AI assistant that works everywhere Saudi developers work: in chat for learning, in PRs for compliance, throughout the entire development lifecycle."
-
-**Key Differentiators:**
-1. **Arabic-first:** Understands Arabic context, not just translation
-2. **Saudi compliance:** Built-in rules for data sovereignty, VAT, ZATCA
-3. **Continuous assistance:** Not one-time help, but ongoing throughout development
-4. **Automated enforcement:** Compliance isn't optional, it's automatic
-
-**Vision:**
-"This becomes critical infrastructure for Vision 2030 digital projects. Every government agency, every contractor building for Saudi government, uses ALLAM to ensure code meets national standards."
-
-**Roadmap:**
-- Phase 1: Chat + GitHub (what I built today)
-- Phase 2: VS Code extension + real-time linting
-- Phase 3: Learning from agency codebases
-- Phase 4: Platform for government-wide compliance
-
----
-
-## TROUBLESHOOTING
-
-### **If chat doesn't work:**
-
-**Check:**
-1. OpenAI API key is set in Replit Secrets
-2. Replit app is running (green dot)
-3. Console for errors
-4. Test with curl: `curl -X POST https://your-url/api/chat -H "Content-Type: application/json" -d '{"message":"test"}'`
-
-**Common fixes:**
-- Restart Replit
-- Check OpenAI account has credits
-- Verify API key is correct
-
----
-
-### **If GitHub webhook doesn't trigger:**
-
-**Check:**
-1. n8n workflow is active (toggle at top)
-2. Webhook URL is correct in GitHub settings
-3. GitHub webhook shows recent deliveries (Settings → Webhooks → Edit → Recent Deliveries)
-4. Click "Redeliver" on a delivery to test
-
-**Common fixes:**
-- n8n might be sleeping (free tier) - execute workflow manually to wake it
-- Check webhook secret matches if you set one
-- Verify GitHub token has repo permissions
-
----
-
-### **If ALLAM review is empty:**
-
-**Check:**
-1. Replit API is responding: test `/api/review-code` with Postman
-2. OpenAI API call succeeded (check Replit logs)
-3. n8n extracted code correctly (check execution data)
-
-**Common fixes:**
-- Add console.log in Replit code to debug
-- Check n8n execution log for each node
-- Verify code was actually passed to ALLAM endpoint
-
----
-
-## TESTING CHECKLIST
-
-Before demo:
-
-**✅ Chat Interface:**
-- [ ] Loads without errors
-- [ ] Sends message successfully
-- [ ] Receives response with code
-- [ ] Copy button works
-- [ ] Arabic input works (RTL displays correctly)
-- [ ] Code blocks have syntax highlighting
-
-**✅ PR Review:**
-- [ ] Create PR triggers webhook
-- [ ] n8n receives webhook
-- [ ] Workflow executes all nodes
-- [ ] ALLAM posts comment on PR
-- [ ] Comment is formatted correctly (Arabic + English)
-- [ ] Compliance violations detected correctly
-
-**✅ End-to-End:**
-- [ ] Ask chat for code
-- [ ] Copy code to GitHub file
-- [ ] Commit triggers review
-- [ ] Review references similar patterns from chat
-
-**✅ Presentation:**
-- [ ] Can access chat from phone (mobile backup)
-- [ ] GitHub PR is visible (not private repo)
-- [ ] You can articulate the vision clearly
-- [ ] You have talking points memorized
-
----
-
-## DEMO DAY SETUP
-
-### **30 minutes before:**
-
-1. ✅ Test chat interface (ask 2-3 questions)
-2. ✅ Verify PRs are visible
-3. ✅ Check n8n workflow is active
-4. ✅ Open all tabs you'll need
-5. ✅ Have backup: record screen in case live demo fails
-
-### **Tab setup:**
-```
-Tab 1: Chat interface (your main demo)
-Tab 2: GitHub PR #1 (bad code with violations)
-Tab 3: GitHub PR #2 (fixed code, approved)
-Tab 4: n8n workflow (show architecture)
-Tab 5: Replit code (if they ask technical questions)
-Tab 6: Architecture diagram/slides
+// مثال استخدام سريع:
+/*
+(async () => {
+  try {
+    const result = await processSaudiPayment({
+      gateway: 'moyasar',            // أو 'tap'
+      amountSAR: 100.00,             // المبلغ قبل الضريبة
+      description: 'طلب رقم 1234',
+      paymentSource: 'tok_xxxxxx',   // توكن من الواجهة الأمامية
+      metadata: { orderId: '1234' },
+      customer: {                    // ل Tap (اختياري لـ Moyasar)
+        first_name: 'Ahmed',
+        email: 'user@example.com',
+        phone: { country_code: '966', number: '5xxxxxxxx' }
+      },
+      seller: {
+        name: 'مؤسسة مثال التجارية',
+        vatNumber: '310123456700003'
+      }
+    });
+    console.log(result);
+  } catch (e) {
+    console.error('خطأ في الدفع:', e.message);
+  }
+})();
+*/
